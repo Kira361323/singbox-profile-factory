@@ -52,11 +52,29 @@ jobs:
 
           if [ -z "$ASSET" ]; then
             echo "sing-box asset not found" >&2
+            echo "Available assets:" >&2
+            echo "$REL" | jq -r '.assets[].name' >&2 || true
             exit 1
           fi
 
-          curl -fsSL "$ASSET" | tar xz
-          sudo install "sing-box-${SB_VER}-linux-amd64/sing-box" /usr/local/bin/
+          echo "sing-box version: ${SB_VER}"
+          echo "Downloading asset: ${ASSET}"
+
+          TMP_DIR=$(mktemp -d)
+          curl -fsSL "$ASSET" | tar xz -C "$TMP_DIR"
+
+          echo "Archive contents:"
+          find "$TMP_DIR" -maxdepth 3 -print
+
+          SB_BIN=$(find "$TMP_DIR" -type f -name sing-box -print -quit)
+
+          if [ -z "$SB_BIN" ]; then
+            echo "sing-box binary not found inside archive" >&2
+            exit 1
+          fi
+
+          chmod +x "$SB_BIN"
+          sudo install "$SB_BIN" /usr/local/bin/sing-box
 
           sing-box version
 
