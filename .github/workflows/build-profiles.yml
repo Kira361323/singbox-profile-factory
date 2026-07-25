@@ -1,0 +1,101 @@
+name: build-profiles
+
+on:
+  push:
+    paths:
+      - subscriptions.md
+      - scripts/**
+      - .github/workflows/build-profiles.yml
+  schedule:
+    - cron: "25 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      max_links:
+        description: "Max links per source, 0 = all"
+        required: false
+        default: "300"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-profiles
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install sing-box
+        env:
+          SING_BOX_TAG: ${{ vars.SING_BOX_TAG || 'latest' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$SING_BOX_TAG" = "latest" ]; then
+            REL_URL="https://api.github.com/repos/SagerNet/sing-box/releases/latest"
+          else
+            REL_URL="https://api.github.com/repos/SagerNet/sing-box/releases/tags/${SING_BOX_TAG}"
+          fi
+
+          REL=$(curl -fsSL "$REL_URL")
+
+          SB_VER=$(echo "$REL" | jq -r .tag_name | sed 's/^v//')
+
+          ASSET=$(echo "$REL" | jq -r '.assets[].browser_download_url
+            | select(contains("linux-amd64") and endswith(".tar.gz"))' | head -1)
+
+          if [ -z "$ASSET" ]; then
+            echo "sing-box asset not found" >&2
+            exit 1
+          fi
+
+          curl -fsSL "$ASSET" | tar xz
+          sudo install "sing-box-${SB_VER}-linux-amd64/sing-box" /usr/local/bin/
+
+          sing-box version
+
+      - name: Install subconverter
+        run: |
+          set -euo pipefail
+
+          REL=$(curl -fsSL https://api.github.com/repos/tindy2013/subconverter/releases/latest)
+
+          ASSET=$(echo "$REL" | jq -r '.assets[].browser_download_url
+            | select(contains("linux64"))' | head -1)
+
+          if [ -z "$ASSET" ]; then
+            echo "subconverter asset not found" >&2
+            exit 1
+          fi
+
+          curl -fsSL "$ASSET" | tar xz
+          chmod +x ./subconverter/subconverter || true
+          test -x ./subconverter/subconverter
+
+      - name: Build profiles
+        env:
+          MAX_LINKS: ${{ github.event.inputs.max_links || vars.MAX_LINKS || '300' }}
+        run: |
+          bash scripts/convert.sh
+
+      - name: Commit profiles
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add profiles/
+
+          if git diff --cached --quiet; then
+            echo "No profile changes"
+          else
+            git commit -m "profiles: $(date -u +%Y-%m-%d_%H:%M)"
+            git push
+          fi
