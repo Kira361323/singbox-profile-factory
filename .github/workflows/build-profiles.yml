@@ -14,10 +14,6 @@ on:
         description: "Max links per source, 0 = all"
         required: false
         default: "300"
-      try_original:
-        description: "Try original URL as fallback: 1 = yes, 0 = no"
-        required: false
-        default: "1"
 
 permissions:
   contents: write
@@ -82,33 +78,9 @@ jobs:
 
           sing-box version
 
-      - name: Install subconverter
-        run: |
-          set -euo pipefail
-
-          REL=$(curl -fsSL https://api.github.com/repos/tindy2013/subconverter/releases/latest)
-
-          ASSET=$(echo "$REL" | jq -r '.assets[].browser_download_url
-            | select(contains("linux64"))' | head -1)
-
-          if [ -z "$ASSET" ]; then
-            echo "subconverter asset not found" >&2
-            echo "Available assets:" >&2
-            echo "$REL" | jq -r '.assets[].name' >&2 || true
-            exit 1
-          fi
-
-          echo "Downloading subconverter asset: ${ASSET}"
-
-          curl -fsSL "$ASSET" | tar xz
-
-          chmod +x ./subconverter/subconverter || true
-          test -x ./subconverter/subconverter
-
       - name: Build profiles
         env:
           MAX_LINKS: ${{ github.event.inputs.max_links || vars.MAX_LINKS || '300' }}
-          TRY_ORIGINAL: ${{ github.event.inputs.try_original || vars.TRY_ORIGINAL || '1' }}
         run: |
           bash scripts/convert.sh
 
