@@ -1,17 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SRC="${1:-subscriptions.md}"
-OUT="${2:-profiles}"
-
-MAX_LINKS="${MAX_LINKS:-300}"
-MAX_LINKS="${MAX_LINKS//[^0-9]/}"
-[[ -z "$MAX_LINKS" ]] && MAX_LINKS=300
+OUT="${1:-profiles}"
 
 mkdir -p "$OUT" /tmp/profile_factory
-[[ -f "$SRC" ]] || touch "$SRC"
 
 STATUS="$OUT/STATUS.md"
+SOURCES_TSV="/tmp/profile_factory/sources.tsv"
 
 cat > "$STATUS" <<EOF
 # Статус профилей
@@ -19,26 +14,11 @@ cat > "$STATUS" <<EOF
 _Обновлено: $(date -u '+%Y-%m-%d %H:%M UTC')_
 
 Мёртвые серверы не удаляются.
-Проверяется только доступность источника и валидность sing-box конфига.
+Проверяется доступность источника и валидность sing-box конфига.
 
-| Профиль | Источник | HTTP | Ссылок | Outbounds | Proxy | sing-box check | Файл |
-|---|---|---:|---:|---:|---:|---|---|
+| Профиль | Источник | HTTP | Ссылок | Outbounds | Proxy | Engine | sing-box check | Файл |
+|---|---|---:|---:|---:|---:|---|---|---|
 EOF
-
-normalize_url() {
-  local url="$1"
-
-  if [[ "$url" =~ ^https://github\.com/([^/]+)/([^/]+)/blob/(.+)$ ]]; then
-    echo "https://raw.githubusercontent.com/${BASH_REMATCH[1]}/${BASH_REMATCH[2]}/${BASH_REMATCH[3]}"
-  else
-    echo "$url"
-  fi
-}
-
-safe_url() {
-  local url="$1"
-  printf '%s' "$url" | sed -E 's#(https?://[^/]+).*#\1/#'
-}
 
 redact_text() {
   sed -E \
@@ -55,26 +35,70 @@ redact_text() {
     -e 's#(ssr://)[A-Za-z0-9_+/=-]+#\1REDACTED#g'
 }
 
-CLEAN_SRC=$(mktemp)
+if ! command -v sing-box >/dev/null 2>&1; then
+  echo "sing-box is required" >&2
+  exit 1
+fi
 
-sed -e '1s/^\xEF\xBB\xBF//' -e 's/\r$//' "$SRC" > "$CLEAN_SRC"
+python3 scripts/sources.py > "$SOURCES_TSV" || true
 
-mapfile -t LINES < <(grep -E '^[[:space:]]*[A-Za-z0-9._-]+[[:space:]]+https?://' "$CLEAN_SRC" || true)
+mapfile -t SOURCE_LINES < "$SOURCES_TSV"
 
-echo "Parsed sources: ${#LINES[@]}"
+echo "Parsed sources: ${#SOURCE_LINES[@]}"
 
-for line in "${LINES[@]}"; do
+node_available=0
+if command -v node >/dev/null 2>&1; then
+  node_available=1
+fi
+
+build_and_check() {
+  local input="$1"
+  local output="$2"
+  local template="$3"
+  local outbounds_json="${4:-}"
+
+  local args=(
+    scripts/share2singbox.py
+    "$input"
+    "$output"
+    --template "$template"
+  )
+
+  if [[ -n "$outbounds_json" ]]; then
+    args+=(--outbounds-json "$outbounds_json")
+  fi
+
+  if python3 "${args[@]}" > "$conv_log" 2>&1; then
+    if sing-box check -c "$output" > /dev/null 2>&1; then
+      return 0
+    fi
+
+    echo "sing-box check with tun failed, trying no-tun" >> "$conv_log"
+
+    args+=(--no-tun)
+
+    if python3 "${args[@]}" >> "$conv_log" 2>&1; then
+      if sing-box check -c "$output" > /dev/null 2>&1; then
+        return 0
+      fi
+    fi
+  fi
+
+  return 1
+}
+
+for line in "${SOURCE_LINES[@]}"; do
   [[ -z "$line" ]] && continue
 
-  line="${line#"${line%%[![:space:]]*}"}"
-  line="${line%$'\r'}"
+  IFS=$'\t' read -r name url max_links ua template <<< "$line"
 
-  name="${line%%[[:space:]]*}"
-  raw_url="${line#*[[:space:]]}"
-  raw_url="${raw_url#"${raw_url%%[![:space:]]*}"}"
+  [[ -z "$name" || -z "$url" ]] && continue
 
-  url="$(normalize_url "$raw_url")"
-  display_url="$(safe_url "$url")"
+  max_links="${max_links//[^0-9]/}"
+  [[ -z "$max_links" ]] && max_links=0
+
+  [[ -z "$ua" ]] && ua="clash.meta"
+  [[ -z "$template" ]] && template="templates/base.json"
 
   echo "source name: $name"
 
@@ -82,15 +106,19 @@ for line in "${LINES[@]}"; do
   links="0"
   total="0"
   proxy="0"
+  engine="—"
   check="—"
   file="—"
 
   src_file="/tmp/profile_factory/$name.src.txt"
   links_full="/tmp/profile_factory/$name.full.txt"
   links_file="/tmp/profile_factory/$name.links.txt"
+  node_out="/tmp/profile_factory/$name.node_outbounds.json"
   conv_log="/tmp/profile_factory/$name.convert.log"
 
-  code=$(curl -skL -o "$src_file" -w '%{http_code}' --max-time 120 "$url" || echo 000)
+  : > "$conv_log"
+
+  code=$(curl -skL -A "$ua" -o "$src_file" -w '%{http_code}' --max-time 120 "$url" || echo 000)
   http="$code"
 
   if [[ "$code" == "200" && -s "$src_file" ]]; then
@@ -98,8 +126,8 @@ for line in "${LINES[@]}"; do
     sed -e 's/^[[:space:]]*//' -e 's/\r$//' "$src_file" \
       | grep -E '^(vmess|vless|trojan|ss|ssr)://' > "$links_full" || true
 
-    if [[ "$MAX_LINKS" -gt 0 ]]; then
-      head -n "$MAX_LINKS" "$links_full" > "$links_file"
+    if [[ "$max_links" -gt 0 ]]; then
+      head -n "$max_links" "$links_full" > "$links_file"
     else
       cat "$links_full" > "$links_file"
     fi
@@ -107,54 +135,50 @@ for line in "${LINES[@]}"; do
     links=$(wc -l < "$links_file" | tr -d ' ')
 
     if [[ -s "$links_file" ]]; then
-
-      if python3 scripts/share2singbox.py "$links_file" "$OUT/$name.json" --name "$name" > "$conv_log" 2>&1; then
-
-        if sing-box check -c "$OUT/$name.json" > /dev/null 2>&1; then
-          check="ok"
-          read -r total proxy < <(python3 scripts/profile_info.py "$OUT/$name.json" || echo "0 0")
-          file="$name.json"
-        else
-          echo "sing-box check with tun failed for $name, trying no-tun"
-
-          if python3 scripts/share2singbox.py "$links_file" "$OUT/$name.json" --name "$name" --no-tun >> "$conv_log" 2>&1 \
-              && sing-box check -c "$OUT/$name.json" > /dev/null 2>&1; then
-            check="ok"
-            read -r total proxy < <(python3 scripts/profile_info.py "$OUT/$name.json" || echo "0 0")
-            file="$name.json"
-          else
-            check="invalid"
-
-            echo "sing-box check failed for $name, first 2000 chars:"
-            head -c 2000 "$OUT/$name.json" 2>/dev/null | redact_text || true
-            echo
-
-            echo "converter log:"
-            tail -n 100 "$conv_log" 2>/dev/null | redact_text || true
-
-            rm -f "$OUT/$name.json"
-          fi
-        fi
-
-      else
-        check="convert-fail"
-
-        echo "share2singbox failed for $name:"
-        tail -n 100 "$conv_log" 2>/dev/null | redact_text || true
-
-        rm -f "$OUT/$name.json"
-      fi
-
+      input_file="$links_file"
     else
-      check="no-links"
+      input_file="$src_file"
     fi
+
+    generated=0
+
+    if build_and_check "$input_file" "$OUT/$name.json" "$template"; then
+      generated=1
+      engine="python"
+    fi
+
+    if [[ "$generated" -eq 0 && "$node_available" -eq 1 ]]; then
+      echo "trying optional Node converter" >> "$conv_log"
+
+      if node scripts/node_convert.mjs "$src_file" "$node_out" >> "$conv_log" 2>&1; then
+        if build_and_check "/dev/null" "$OUT/$name.json" "$template" "$node_out"; then
+          generated=1
+          engine="node"
+        fi
+      fi
+    fi
+
+    if [[ "$generated" -eq 1 ]]; then
+      check="ok"
+      read -r total proxy < <(python3 scripts/profile_info.py "$OUT/$name.json" || echo "0 0")
+      file="$name.json"
+    else
+      check="convert-fail"
+
+      echo "conversion failed for $name" >&2
+      echo "converter log:" >&2
+      tail -n 150 "$conv_log" 2>/dev/null | redact_text || true
+
+      rm -f "$OUT/$name.json"
+    fi
+
   fi
 
-  echo "| $name | $display_url | $http | $links | $total | $proxy | $check | $file |" >> "$STATUS"
+  display_url=$(printf '%s' "$url" | sed -E 's#(https?://[^/]+).*#\1/#')
+
+  echo "| $name | $display_url | $http | $links | $total | $proxy | $engine | $check | $file |" >> "$STATUS"
 done
 
-if [[ "${#LINES[@]}" -eq 0 ]]; then
-  echo "| — | — | — | — | — | — | no sources | — |" >> "$STATUS"
+if [[ "${#SOURCE_LINES[@]}" -eq 0 ]]; then
+  echo "| — | — | — | — | — | — | — | no sources | — |" >> "$STATUS"
 fi
-
-rm -f "$CLEAN_SRC"
