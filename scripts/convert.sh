@@ -12,6 +12,7 @@ MAX_LINKS="${MAX_LINKS//[^0-9]/}"
 [[ -z "$MAX_LINKS" ]] && MAX_LINKS=300
 
 SUBCONVERTER_EXTERNAL="${SUBCONVERTER_EXTERNAL:-0}"
+TRY_ORIGINAL="${TRY_ORIGINAL:-1}"
 
 mkdir -p "$OUT" /tmp/subsrc
 [[ -f "$SRC" ]] || touch "$SRC"
@@ -46,8 +47,9 @@ safe_url() {
   printf '%s' "$url" | sed -E 's#(https?://[^/]+).*#\1/#'
 }
 
-redact_links() {
+redact_text() {
   sed -E \
+    -e 's#(token=)[^&[:space:]"]+#\1REDACTED#gI' \
     -e 's#(vmess://)[A-Za-z0-9+/=]+#\1REDACTED#g' \
     -e 's#(vless://)[^@[:space:]]+@#\1REDACTED@#g' \
     -e 's#(trojan://)[^@[:space:]]+@#\1REDACTED@#g' \
@@ -90,7 +92,7 @@ if ! curl -s -o /dev/null "$SC_API/"; then
 
   if [[ -f "$SC_LOG" ]]; then
     echo "subconverter log:"
-    tail -n 200 "$SC_LOG" || true
+    tail -n 200 "$SC_LOG" | redact_text || true
   fi
 fi
 
@@ -102,15 +104,6 @@ if ! curl -s -o /dev/null "$LOCAL_RAW/"; then
     tail -n 200 "$HTTP_LOG" || true
   fi
 fi
-
-redact_links() {
-  sed -E \
-    -e 's#(vmess://)[A-Za-z0-9+/=]+#\1REDACTED#g' \
-    -e 's#(vless://)[^@[:space:]]+@#\1REDACTED@#g' \
-    -e 's#(trojan://)[^@[:space:]]+@#\1REDACTED@#g' \
-    -e 's#(ss://)[^@[:space:]]+@#\1REDACTED@#g' \
-    -e 's#(ssr://)[A-Za-z0-9_+/=-]+#\1REDACTED#g'
-}
 
 CLEAN_SRC=$(mktemp)
 
@@ -153,7 +146,9 @@ for line in "${LINES[@]}"; do
 
   if [[ "$code" == "200" && -s "$src_file" ]]; then
 
-    grep -E '^(vmess|vless|trojan|ss|ssr)://' "$src_file" > "$links_full" || true
+    # Нормализуем исходный файл и вытаскиваем share-ссылки.
+    sed -e 's/^[[:space:]]*//' -e 's/\r$//' "$src_file" \
+      | grep -E '^(vmess|vless|trojan|ss|ssr)://' > "$links_full" || true
 
     if [[ "$MAX_LINKS" -gt 0 ]]; then
       head -n "$MAX_LINKS" "$links_full" > "$links_file"
@@ -166,24 +161,29 @@ for line in "${LINES[@]}"; do
     attempts=()
 
     if [[ -s "$links_file" ]]; then
-      echo "local input lines for $name: $(wc -l < "$links_file" | tr -d ' ')"
+      echo "local input lines for $name: $links"
 
       echo "local input sample:"
-      head -n 3 "$links_file" | redact_links || true
+      head -n 3 "$links_file" | redact_text || true
 
-      echo "local plain fetch lines: $(curl -sS "$LOCAL_RAW/$name.txt" | wc -l | tr -d ' ')"
+      plain_lines=$(curl -sfS "$LOCAL_RAW/$name.txt" 2>/dev/null | wc -l | tr -d ' ' || true)
+      [[ -z "$plain_lines" ]] && plain_lines=0
+      echo "local plain fetch lines: $plain_lines"
 
       attempts+=("$LOCAL_RAW/$name.txt")
 
       # Base64 fallback: многие V2Ray-подписки представляют собой base64-список ссылок.
-      base64 -w0 "$links_file" > "/tmp/subsrc/$name.b64.txt"
+      base64 < "$links_file" | tr -d '\n' > "/tmp/subsrc/$name.b64.txt"
 
-      echo "local base64 fetch bytes: $(curl -sS "$LOCAL_RAW/$name.b64.txt" | wc -c | tr -d ' ')"
+      b64_bytes=$(curl -sfS "$LOCAL_RAW/$name.b64.txt" 2>/dev/null | wc -c | tr -d ' ' || true)
+      [[ -z "$b64_bytes" ]] && b64_bytes=0
+      echo "local base64 fetch bytes: $b64_bytes"
 
       attempts+=("$LOCAL_RAW/$name.b64.txt")
 
-      # Оригинальный URL как последний fallback.
-      attempts+=("$url")
+      if [[ "$TRY_ORIGINAL" == "1" ]]; then
+        attempts+=("$url")
+      fi
     else
       attempts+=("$url")
     fi
@@ -221,9 +221,7 @@ for line in "${LINES[@]}"; do
       else
         echo "subconverter response for $name ($attempt_name), first 2000 chars:"
 
-        head -c 2000 "$sc_resp" 2>/dev/null \
-          | sed -E 's#(token=)[^&[:space:]"]+#\1REDACTED#gI' \
-          | redact_links || true
+        head -c 2000 "$sc_resp" 2>/dev/null | redact_text || true
 
         echo
       fi
@@ -239,7 +237,7 @@ for line in "${LINES[@]}"; do
       else
         check="invalid"
         echo "sing-box check failed for $name, first 2000 chars:"
-        head -c 2000 "$OUT/$name.json" 2>/dev/null || true
+        head -c 2000 "$OUT/$name.json" 2>/dev/null | redact_text || true
         echo
         rm -f "$OUT/$name.json"
       fi
