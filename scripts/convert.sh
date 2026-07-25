@@ -103,6 +103,15 @@ if ! curl -s -o /dev/null "$LOCAL_RAW/"; then
   fi
 fi
 
+redact_links() {
+  sed -E \
+    -e 's#(vmess://)[A-Za-z0-9+/=]+#\1REDACTED#g' \
+    -e 's#(vless://)[^@[:space:]]+@#\1REDACTED@#g' \
+    -e 's#(trojan://)[^@[:space:]]+@#\1REDACTED@#g' \
+    -e 's#(ss://)[^@[:space:]]+@#\1REDACTED@#g' \
+    -e 's#(ssr://)[A-Za-z0-9_+/=-]+#\1REDACTED#g'
+}
+
 CLEAN_SRC=$(mktemp)
 
 # Убираем BOM и Windows CRLF
@@ -154,33 +163,68 @@ for line in "${LINES[@]}"; do
 
     links=$(wc -l < "$links_file" | tr -d ' ')
 
+    attempts=()
+
     if [[ -s "$links_file" ]]; then
-      conv_url="$LOCAL_RAW/$name.txt"
+      echo "local input lines for $name: $(wc -l < "$links_file" | tr -d ' ')"
+
+      echo "local input sample:"
+      head -n 3 "$links_file" | redact_links || true
+
+      echo "local plain fetch lines: $(curl -sS "$LOCAL_RAW/$name.txt" | wc -l | tr -d ' ')"
+
+      attempts+=("$LOCAL_RAW/$name.txt")
+
+      # Base64 fallback: многие V2Ray-подписки представляют собой base64-список ссылок.
+      base64 -w0 "$links_file" > "/tmp/subsrc/$name.b64.txt"
+
+      echo "local base64 fetch bytes: $(curl -sS "$LOCAL_RAW/$name.b64.txt" | wc -c | tr -d ' ')"
+
+      attempts+=("$LOCAL_RAW/$name.b64.txt")
+
+      # Оригинальный URL как последний fallback.
+      attempts+=("$url")
     else
-      conv_url="$url"
+      attempts+=("$url")
     fi
 
     sc_resp="/tmp/subsrc/$name.subconverter-response"
     converted=""
 
-    for sc_target in singbox sing-box; do
-      echo "trying subconverter target=$sc_target for $name"
+    for conv_url in "${attempts[@]}"; do
+      case "$conv_url" in
+        "$LOCAL_RAW/$name.txt")
+          attempt_name="local-plain"
+          ;;
+        "$LOCAL_RAW/$name.b64.txt")
+          attempt_name="local-base64"
+          ;;
+        *)
+          attempt_name="original-url"
+          ;;
+      esac
+
+      echo "trying subconverter target=singbox for $name via $attempt_name"
 
       sc_code=$(curl -sS -G "$SC_API/sub" \
-          --data-urlencode "target=$sc_target" \
+          --data-urlencode "target=singbox" \
           --data-urlencode "url=$conv_url" \
           --max-time 300 \
           -o "$sc_resp" \
           -w '%{http_code}' || echo 000)
 
-      echo "subconverter HTTP for $name ($sc_target): $sc_code"
+      echo "subconverter HTTP for $name ($attempt_name): $sc_code"
 
       if [[ "$sc_code" == "200" && -s "$sc_resp" ]]; then
-        converted="$sc_target"
+        converted="$attempt_name"
         break
       else
-        echo "subconverter response for $name ($sc_target), first 2000 chars:"
-        head -c 2000 "$sc_resp" 2>/dev/null || true
+        echo "subconverter response for $name ($attempt_name), first 2000 chars:"
+
+        head -c 2000 "$sc_resp" 2>/dev/null \
+          | sed -E 's#(token=)[^&[:space:]"]+#\1REDACTED#gI' \
+          | redact_links || true
+
         echo
       fi
     done
