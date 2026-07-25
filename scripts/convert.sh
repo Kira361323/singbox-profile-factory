@@ -46,6 +46,15 @@ safe_url() {
   printf '%s' "$url" | sed -E 's#(https?://[^/]+).*#\1/#'
 }
 
+redact_links() {
+  sed -E \
+    -e 's#(vmess://)[A-Za-z0-9+/=]+#\1REDACTED#g' \
+    -e 's#(vless://)[^@[:space:]]+@#\1REDACTED@#g' \
+    -e 's#(trojan://)[^@[:space:]]+@#\1REDACTED@#g' \
+    -e 's#(ss://)[^@[:space:]]+@#\1REDACTED@#g' \
+    -e 's#(ssr://)[A-Za-z0-9_+/=-]+#\1REDACTED#g'
+}
+
 SC_PID=""
 
 if [[ "$SUBCONVERTER_EXTERNAL" != "1" ]]; then
