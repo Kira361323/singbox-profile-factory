@@ -3,17 +3,19 @@ name: build-profiles
 on:
   push:
     paths:
+      - providers.json
       - subscriptions.md
       - scripts/**
+      - templates/**
       - .github/workflows/build-profiles.yml
   schedule:
     - cron: "25 */6 * * *"
   workflow_dispatch:
     inputs:
       max_links:
-        description: "Max links per source, 0 = all"
+        description: "Override max links for all sources. Empty = use providers/default."
         required: false
-        default: "300"
+        default: ""
 
 permissions:
   contents: write
@@ -25,7 +27,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -78,9 +80,41 @@ jobs:
 
           sing-box version
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        continue-on-error: true
+        with:
+          node-version: 20
+
+      - name: Install optional Node singbox-converter
+        continue-on-error: true
+        shell: bash
+        run: |
+          set +e
+
+          npm init -y >/dev/null 2>&1
+
+          npm install singbox-converter >/dev/null 2>&1
+
+          if [ $? -ne 0 ]; then
+            echo "npm install singbox-converter failed, trying GitHub repo"
+            npm install github:OpexDevelop/singbox-converter >/dev/null 2>&1
+          fi
+
+          node -e "import('singbox-converter').then(()=>process.exit(0)).catch(()=>process.exit(1))" >/dev/null 2>&1
+
+          if [ $? -eq 0 ]; then
+            echo "Node singbox-converter available"
+          else
+            echo "Node singbox-converter unavailable, Python converter will be used"
+          fi
+
       - name: Build profiles
         env:
-          MAX_LINKS: ${{ github.event.inputs.max_links || vars.MAX_LINKS || '300' }}
+          FORCE_MAX_LINKS: ${{ github.event.inputs.max_links || '' }}
+          MAX_LINKS: ${{ vars.MAX_LINKS || '300' }}
+          DEFAULT_UA: ${{ vars.DEFAULT_UA || 'clash.meta' }}
+          DEFAULT_TEMPLATE: ${{ vars.DEFAULT_TEMPLATE || 'templates/base.json' }}
         run: |
           bash scripts/convert.sh
 
