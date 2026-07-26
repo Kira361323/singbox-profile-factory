@@ -259,7 +259,7 @@ def add_tls(outbound: dict, security: str, params: dict, default_server_name: st
     if alpn:
         tls["alpn"] = [x for x in str(alpn).split(",") if x]
 
-        fingerprint = (lc.get("fp") or "").lower()
+    fingerprint = (lc.get("fp") or "").lower()
 
     if security == "reality" and fingerprint not in UTLS_FINGERPRINTS:
         fingerprint = "chrome"
