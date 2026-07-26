@@ -39,7 +39,7 @@ INTERNAL_TEMPLATE = {
             }
         ]
     },
-        "inbounds": [
+    "inbounds": [
         {
             "type": "mixed",
             "tag": "mixed-in",
@@ -84,9 +84,9 @@ def redact_text(text: str) -> str:
     )
 
     text = re.sub(r"(vmess://)[A-Za-z0-9+/=]+", r"\1REDACTED", text)
-    text = re.sub(r"(vless://)[^@[:space:]]+@", r"\1REDACTED@", text)
-    text = re.sub(r"(trojan://)[^@[:space:]]+@", r"\1REDACTED@", text)
-    text = re.sub(r"(ss://)[^@[:space:]]+@", r"\1REDACTED@", text)
+    text = re.sub(r"(vless://)[^@\s]+@", r"\1REDACTED@", text)
+    text = re.sub(r"(trojan://)[^@\s]+@", r"\1REDACTED@", text)
+    text = re.sub(r"(ss://)[^@\s]+@", r"\1REDACTED@", text)
     text = re.sub(r"(ssr://)[A-Za-z0-9_+/=-]+", r"\1REDACTED", text)
 
     return text
