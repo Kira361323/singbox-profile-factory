@@ -51,41 +51,15 @@ if command -v node >/dev/null 2>&1; then
   node_available=1
 fi
 
-build_and_check() {
-  local input="$1"
-  local output="$2"
-  local template="$3"
-  local outbounds_json="${4:-}"
+    else
+      check="convert-fail"
 
-  local args=(
-    scripts/share2singbox.py
-    "$input"
-    "$output"
-    --template "$template"
-  )
+      echo "conversion failed for $name" >&2
+      echo "converter log:" >&2
+      tail -n 150 "$conv_log" 2>/dev/null | redact_text || true
 
-  if [[ -n "$outbounds_json" ]]; then
-    args+=(--outbounds-json "$outbounds_json")
-  fi
-
-  if python3 "${args[@]}" > "$conv_log" 2>&1; then
-    if sing-box check -c "$output" > /dev/null 2>&1; then
-      return 0
+      rm -f "$OUT/$name.json"
     fi
-
-    echo "sing-box check with tun failed, trying no-tun" >> "$conv_log"
-
-    args+=(--no-tun)
-
-    if python3 "${args[@]}" >> "$conv_log" 2>&1; then
-      if sing-box check -c "$output" > /dev/null 2>&1; then
-        return 0
-      fi
-    fi
-  fi
-
-  return 1
-}
 
 for line in "${SOURCE_LINES[@]}"; do
   [[ -z "$line" ]] && continue
