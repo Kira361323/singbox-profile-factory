@@ -371,10 +371,6 @@ def parse_shadowsocks(line: str, index: int):
     if "#" in rest:
         rest, fragment = rest.split("#", 1)
 
-    query_string = ""
-    if "?" in rest:
-        rest, query_string = rest.split("?", 1)
-
     try:
         if "@" in rest:
             userinfo, hostport = rest.rsplit("@", 1)
@@ -600,7 +596,7 @@ def load_template(path: str):
 def ensure_base(profile: dict, no_tun: bool):
     profile.setdefault("log", {"level": "warn"})
 
-        profile.setdefault(
+    profile.setdefault(
         "dns",
         {
             "servers": [
