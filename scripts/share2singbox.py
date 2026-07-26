@@ -28,7 +28,7 @@ INTERNAL_TEMPLATE = {
     "log": {
         "level": "warn"
     },
-    "dns": {
+        "dns": {
         "servers": [
             {
                 "tag": "dns",
