@@ -153,6 +153,7 @@ for line in "${SOURCE_LINES[@]}"; do
     else
       input_file="$src_file"
     fi
+
     rm -f "$OUT/$name.json"
 
     generated=0
@@ -162,7 +163,7 @@ for line in "${SOURCE_LINES[@]}"; do
       engine="python"
     fi
 
-        if [[ "$generated" -eq 0 && "$node_available" -eq 1 && ! -s "$OUT/$name.json" ]]; then
+    if [[ "$generated" -eq 0 && "$node_available" -eq 1 && ! -s "$OUT/$name.json" ]]; then
       echo "trying optional Node converter" >> "$conv_log"
 
       if node scripts/node_convert.mjs "$src_file" "$node_out" >> "$conv_log" 2>&1; then
