@@ -51,14 +51,19 @@ if command -v node >/dev/null 2>&1; then
   node_available=1
 fi
 
-    else
+        else
       check="convert-fail"
 
       echo "conversion failed for $name" >&2
-      echo "converter log:" >&2
-      tail -n 150 "$conv_log" 2>/dev/null | redact_text || true
 
-      rm -f "$OUT/$name.json"
+      echo "converter log:" >&2
+      tail -n 300 "$conv_log" 2>/dev/null | redact_text || true
+
+      if [[ -f "$OUT/$name.json" ]]; then
+        echo "generated JSON head:" >&2
+        head -c 3000 "$OUT/$name.json" 2>/dev/null | redact_text || true
+        rm -f "$OUT/$name.json"
+      fi
     fi
 
 for line in "${SOURCE_LINES[@]}"; do
