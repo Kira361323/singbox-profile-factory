@@ -32,10 +32,7 @@ INTERNAL_TEMPLATE = {
         "servers": [
             {
                 "tag": "dns",
-                "type": "udp",
-                "server": "1.1.1.1",
-                "server_port": 53,
-                "detour": "DIRECT"
+                "type": "local"
             }
         ]
     },
@@ -603,16 +600,13 @@ def load_template(path: str):
 def ensure_base(profile: dict, no_tun: bool):
     profile.setdefault("log", {"level": "warn"})
 
-    profile.setdefault(
+        profile.setdefault(
         "dns",
         {
             "servers": [
                 {
                     "tag": "dns",
-                    "type": "udp",
-                    "server": "1.1.1.1",
-                    "server_port": 53,
-                    "detour": "DIRECT",
+                    "type": "local"
                 }
             ]
         },
