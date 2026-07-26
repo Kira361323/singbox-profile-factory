@@ -259,7 +259,11 @@ def add_tls(outbound: dict, security: str, params: dict, default_server_name: st
     if alpn:
         tls["alpn"] = [x for x in str(alpn).split(",") if x]
 
-    fingerprint = (lc.get("fp") or "").lower()
+        fingerprint = (lc.get("fp") or "").lower()
+
+    if security == "reality" and fingerprint not in UTLS_FINGERPRINTS:
+        fingerprint = "chrome"
+
     if fingerprint in UTLS_FINGERPRINTS:
         tls["utls"] = {
             "enabled": True,
@@ -601,13 +605,15 @@ def load_template(path: str):
 def ensure_base(profile: dict, no_tun: bool):
     profile.setdefault("log", {"level": "warn"})
 
-    profile.setdefault(
+      profile.setdefault(
         "dns",
         {
             "servers": [
                 {
                     "tag": "dns",
-                    "address": "1.1.1.1",
+                    "type": "udp",
+                    "server": "1.1.1.1",
+                    "server_port": 53,
                     "detour": "DIRECT",
                 }
             ]
