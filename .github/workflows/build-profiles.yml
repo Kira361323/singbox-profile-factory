@@ -84,7 +84,7 @@ jobs:
         uses: actions/setup-node@v4
         continue-on-error: true
         with:
-          node-version: 20
+          node-version: 24
 
       - name: Install optional Node singbox-converter
         continue-on-error: true
@@ -115,6 +115,7 @@ jobs:
           MAX_LINKS: ${{ vars.MAX_LINKS || '300' }}
           DEFAULT_UA: ${{ vars.DEFAULT_UA || 'clash.meta' }}
           DEFAULT_TEMPLATE: ${{ vars.DEFAULT_TEMPLATE || 'templates/base.json' }}
+          PRUNE_INVALID: ${{ vars.PRUNE_INVALID || '1' }}
         run: |
           bash scripts/convert.sh
 
