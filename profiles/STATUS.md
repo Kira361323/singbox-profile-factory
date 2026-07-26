@@ -7,5 +7,5 @@ _Обновлено: 2026-07-26 05:10 UTC_
 
 | Профиль | Источник | HTTP | Ссылок | Outbounds | Proxy | Engine | sing-box check | Файл |
 |---|---|---:|---:|---:|---:|---|---|---|
-| matin | https://raw.githubusercontent.com/ | 200 | 300 | 0 | 0 | — | convert-fail | — |
-| aetris | https://raw.githubusercontent.com/ | 200 | 300 | 0 | 0 | — | convert-fail | — |
+| matin | https://raw.githubusercontent.com/ | 200 | 30 | 0 | 0 | — | convert-fail | — |
+| aetris | https://raw.githubusercontent.com/ | 200 | 30 | 0 | 0 | — | convert-fail | — |
