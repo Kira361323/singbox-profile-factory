@@ -6,10 +6,7 @@
     "servers": [
       {
         "tag": "dns",
-        "type": "udp",
-        "server": "1.1.1.1",
-        "server_port": 53,
-        "detour": "DIRECT"
+        "type": "local"
       }
     ]
   },
