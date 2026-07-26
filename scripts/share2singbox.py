@@ -39,13 +39,12 @@ INTERNAL_TEMPLATE = {
             }
         ]
     },
-    "inbounds": [
+        "inbounds": [
         {
             "type": "mixed",
             "tag": "mixed-in",
             "listen": "127.0.0.1",
-            "listen_port": 2080,
-            "sniff": True
+            "listen_port": 2080
         },
         {
             "type": "tun",
@@ -54,8 +53,7 @@ INTERNAL_TEMPLATE = {
                 "172.19.0.1/30"
             ],
             "auto_route": True,
-            "strict_route": True,
-            "sniff": True
+            "strict_route": True
         }
     ],
     "outbounds": [
@@ -638,7 +636,6 @@ def ensure_base(profile: dict, no_tun: bool):
                 "tag": "mixed-in",
                 "listen": "127.0.0.1",
                 "listen_port": 2080,
-                "sniff": True,
             },
         )
 
@@ -662,7 +659,6 @@ def ensure_base(profile: dict, no_tun: bool):
                     "address": ["172.19.0.1/30"],
                     "auto_route": True,
                     "strict_route": True,
-                    "sniff": True,
                 }
             )
 
