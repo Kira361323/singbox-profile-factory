@@ -2,6 +2,7 @@
 set -euo pipefail
 
 OUT="${1:-profiles}"
+PRUNE_INVALID="${PRUNE_INVALID:-1}"
 
 mkdir -p "$OUT" /tmp/profile_factory
 
@@ -51,20 +52,54 @@ if command -v node >/dev/null 2>&1; then
   node_available=1
 fi
 
-        else
-      check="convert-fail"
+build_and_check() {
+  local input="$1"
+  local output="$2"
+  local template="$3"
+  local outbounds_json="${4:-}"
 
-      echo "conversion failed for $name" >&2
+  local args=(
+    scripts/share2singbox.py
+    "$input"
+    "$output"
+    --template "$template"
+    --max-outbounds "$max_links"
+  )
 
-      echo "converter log:" >&2
-      tail -n 300 "$conv_log" 2>/dev/null | redact_text || true
+  if [[ "${PRUNE_INVALID:-1}" == "1" ]]; then
+    args+=(--prune)
+  fi
 
-      if [[ -f "$OUT/$name.json" ]]; then
-        echo "generated JSON head:" >&2
-        head -c 3000 "$OUT/$name.json" 2>/dev/null | redact_text || true
-        rm -f "$OUT/$name.json"
+  if [[ -n "$outbounds_json" ]]; then
+    args+=(--outbounds-json "$outbounds_json")
+  fi
+
+  echo "python converter args: ${args[*]}" >> "$conv_log"
+
+  if python3 "${args[@]}" >> "$conv_log" 2>&1; then
+    echo "sing-box check with tun:" >> "$conv_log"
+
+    if sing-box check -c "$output" >> "$conv_log" 2>&1; then
+      return 0
+    fi
+
+    echo "sing-box check with tun failed, trying no-tun" >> "$conv_log"
+
+    args+=(--no-tun)
+
+    if python3 "${args[@]}" >> "$conv_log" 2>&1; then
+      echo "sing-box check without tun:" >> "$conv_log"
+
+      if sing-box check -c "$output" >> "$conv_log" 2>&1; then
+        return 0
       fi
     fi
+  else
+    echo "python converter failed" >> "$conv_log"
+  fi
+
+  return 1
+}
 
 for line in "${SOURCE_LINES[@]}"; do
   [[ -z "$line" ]] && continue
@@ -145,10 +180,15 @@ for line in "${SOURCE_LINES[@]}"; do
       check="convert-fail"
 
       echo "conversion failed for $name" >&2
-      echo "converter log:" >&2
-      tail -n 150 "$conv_log" 2>/dev/null | redact_text || true
 
-      rm -f "$OUT/$name.json"
+      echo "converter log:" >&2
+      tail -n 300 "$conv_log" 2>/dev/null | redact_text || true
+
+      if [[ -f "$OUT/$name.json" ]]; then
+        echo "generated JSON head:" >&2
+        head -c 3000 "$OUT/$name.json" 2>/dev/null | redact_text || true
+        rm -f "$OUT/$name.json"
+      fi
     fi
 
   fi
