@@ -28,11 +28,13 @@ INTERNAL_TEMPLATE = {
     "log": {
         "level": "warn"
     },
-        "dns": {
+    "dns": {
         "servers": [
             {
                 "tag": "dns",
-                "address": "1.1.1.1",
+                "type": "udp",
+                "server": "1.1.1.1",
+                "server_port": 53,
                 "detour": "DIRECT"
             }
         ]
