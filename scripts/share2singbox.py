@@ -605,7 +605,7 @@ def load_template(path: str):
 def ensure_base(profile: dict, no_tun: bool):
     profile.setdefault("log", {"level": "warn"})
 
-      profile.setdefault(
+    profile.setdefault(
         "dns",
         {
             "servers": [
